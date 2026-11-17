@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import 'engine/input_controller.dart';
 import 'models/notebook_models.dart';
@@ -19,26 +19,27 @@ class CustomNoteApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'CustomNote (.cnote)',
+      title: 'CollaNote Studio (.cnote)',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorSchemeSeed: const Color(0xFF2563EB),
         useMaterial3: true,
+        fontFamily: 'sans-serif',
       ),
-      home: const NotebookWorkspaceScreen(),
+      home: const CollaNoteWorkspaceScreen(),
     );
   }
 }
 
-class NotebookWorkspaceScreen extends StatefulWidget {
-  const NotebookWorkspaceScreen({super.key});
+class CollaNoteWorkspaceScreen extends StatefulWidget {
+  const CollaNoteWorkspaceScreen({super.key});
 
   @override
-  State<NotebookWorkspaceScreen> createState() =>
-      _NotebookWorkspaceScreenState();
+  State<CollaNoteWorkspaceScreen> createState() =>
+      _CollaNoteWorkspaceScreenState();
 }
 
-class _NotebookWorkspaceScreenState extends State<NotebookWorkspaceScreen> {
+class _CollaNoteWorkspaceScreenState extends State<CollaNoteWorkspaceScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey();
   final GlobalKey<InfiniteNoteCanvasState> _canvasKey = GlobalKey();
 
@@ -46,25 +47,46 @@ class _NotebookWorkspaceScreenState extends State<NotebookWorkspaceScreen> {
   int _activePageIndex = 0;
 
   CanvasToolMode _toolMode = CanvasToolMode.pen;
-  String _selectedColorHex = '#111827';
-  double _lineWidth = 3.5;
+  final List<String> _quickColors = ['#111827', '#2563EB', '#DC2626'];
+  final List<String> _extraColors = [
+    '#16A34A',
+    '#D97706',
+    '#7C3AED',
+    '#DB2777',
+    '#0891B2',
+    '#FACC15',
+  ];
+  int _selectedColorSlot = 0;
+
+  final List<double> _strokePresets = [2.2, 4.0, 7.5];
+  int _selectedWidthSlot = 1;
+
   DrawingInputMode _inputMode = DrawingInputMode.universalStylus;
   double _simulatedTiltDegrees = 90.0;
+  double _currentZoom = 1.0;
   bool _isRunningOcr = false;
+
+  // Draggable / dockable floating CollaNote tool capsule offset
+  Offset _dockOffset = Offset.zero;
+  bool _showToolInspector = false;
 
   @override
   void initState() {
     super.initState();
     _notebook = Notebook(
-      id: 'nb_${DateTime.now().millisecondsSinceEpoch}',
-      title: 'Vector Notebook',
+      id: 'nb_\',
+      title: 'Lecture & Study Notes',
       creationDate: DateTime.now(),
       modificationDate: DateTime.now(),
       pages: [
         NotePage(
           id: 'page_0',
           pageIndex: 0,
-          paperConfig: const PaperConfig(style: PaperStyle.grid, spacing: 32.0),
+          paperConfig: const PaperConfig(
+            style: PaperStyle.grid,
+            spacing: 28.0,
+            backgroundColorHex: '#FFFDF9',
+          ),
           strokes: [],
         ),
       ],
@@ -72,13 +94,49 @@ class _NotebookWorkspaceScreenState extends State<NotebookWorkspaceScreen> {
   }
 
   NotePage get _activePage => _notebook.pages[_activePageIndex];
+  String get _activeColorHex => _quickColors[_selectedColorSlot];
+  double get _activeLineWidth => _strokePresets[_selectedWidthSlot];
+
+  void _renameNotebookDialog() {
+    final ctrl = TextEditingController(text: _notebook.title);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rename Notebook'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            hintText: 'Notebook title',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final next = ctrl.text.trim();
+              if (next.isNotEmpty) {
+                setState(() => _notebook.title = next);
+              }
+              Navigator.pop(ctx);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _addPage() {
     final newIdx = _notebook.pages.length;
     setState(() {
       _notebook.pages.add(
         NotePage(
-          id: 'page_${DateTime.now().microsecondsSinceEpoch}',
+          id: 'page_\',
           pageIndex: newIdx,
           paperConfig: _activePage.paperConfig.copyWith(),
           strokes: [],
@@ -94,11 +152,11 @@ class _NotebookWorkspaceScreenState extends State<NotebookWorkspaceScreen> {
         .asMap()
         .entries
         .map((e) => e.value.cloneWithNewId(
-            '${e.value.id}_copy_${DateTime.now().microsecondsSinceEpoch}_${e.key}'))
+            '\_copy_\_\'))
         .toList();
 
     final copy = NotePage(
-      id: 'page_${DateTime.now().microsecondsSinceEpoch}',
+      id: 'page_\',
       pageIndex: index + 1,
       paperConfig: source.paperConfig.copyWith(),
       strokes: clonedStrokes,
@@ -137,17 +195,18 @@ class _NotebookWorkspaceScreenState extends State<NotebookWorkspaceScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
+          behavior: SnackBarBehavior.floating,
           content: Text(
             text.isEmpty
-                ? 'No handwriting detected on this page.'
-                : 'Indexed OCR text: "$text"',
+                ? 'No handwriting detected on Page \.'
+                : 'Indexed OCR: "\"',
           ),
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('OCR note: $e')),
+        SnackBar(content: Text('OCR error: \')),
       );
     } finally {
       if (mounted) setState(() => _isRunningOcr = false);
@@ -162,17 +221,17 @@ class _NotebookWorkspaceScreenState extends State<NotebookWorkspaceScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('SQLite FTS5 Search'),
+          title: const Text('Search Handwritten Notes'),
           content: SizedBox(
-            width: 420,
-            height: 300,
+            width: 400,
+            height: 290,
             child: Column(
               children: [
                 TextField(
                   controller: controller,
                   autofocus: true,
                   decoration: const InputDecoration(
-                    hintText: 'Search handwritten notes (prefix match)...',
+                    hintText: 'Type keyword (SQLite FTS5)...',
                     prefixIcon: Icon(Icons.search),
                     border: OutlineInputBorder(),
                   ),
@@ -187,7 +246,7 @@ class _NotebookWorkspaceScreenState extends State<NotebookWorkspaceScreen> {
                   child: hits.isEmpty
                       ? const Center(
                           child: Text(
-                            'Scan handwriting with the OCR button first, then search here.',
+                            'Tap the OCR scan icon on a page first, then search here.',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: Colors.black54),
                           ),
@@ -199,9 +258,9 @@ class _NotebookWorkspaceScreenState extends State<NotebookWorkspaceScreen> {
                             final hit = hits[idx];
                             return ListTile(
                               leading: CircleAvatar(
-                                child: Text('${hit.pageIndex + 1}'),
+                                child: Text('\'),
                               ),
-                              title: Text('Page ${hit.pageIndex + 1}'),
+                              title: Text('Page \'),
                               subtitle: Text(
                                 hit.snippet.isEmpty
                                     ? hit.notebookTitle
@@ -235,13 +294,115 @@ class _NotebookWorkspaceScreenState extends State<NotebookWorkspaceScreen> {
     );
   }
 
+  void _openPaperSettingsSheet() {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Page Template & Paper Tint',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 12),
+              SegmentedButton<PaperStyle>(
+                segments: PaperStyle.values
+                    .map((s) => ButtonSegment(value: s, label: Text(s.label)))
+                    .toList(),
+                selected: {_activePage.paperConfig.style},
+                onSelectionChanged: (set) {
+                  setState(() {
+                    _activePage.paperConfig =
+                        _activePage.paperConfig.copyWith(style: set.first);
+                  });
+                  setSheetState(() {});
+                },
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('Paper Tint:',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(width: 12),
+                  for (final tint in [
+                    ('#FFFDF9', 'Warm Cream'),
+                    ('#FFFFFF', 'Pure White'),
+                    ('#FEF9C3', 'Cornell Yellow'),
+                    ('#F1F5F9', 'Cool Gray'),
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.only(right: 10),
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _activePage.paperConfig = _activePage.paperConfig
+                                .copyWith(backgroundColorHex: tint.\);
+                          });
+                          setSheetState(() {});
+                        },
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: _colorFromHex(tint.\),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: _activePage.paperConfig.backgroundColorHex ==
+                                      tint.\
+                                  ? const Color(0xFF2563EB)
+                                  : Colors.black26,
+                              width: 2.2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('Input Mode:',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(width: 12),
+                  SegmentedButton<DrawingInputMode>(
+                    segments: const [
+                      ButtonSegment(
+                        value: DrawingInputMode.activeStylusOnly,
+                        label: Text('Stylus Only'),
+                      ),
+                      ButtonSegment(
+                        value: DrawingInputMode.universalStylus,
+                        label: Text('Stylus + Touch'),
+                      ),
+                    ],
+                    selected: {_inputMode},
+                    onSelectionChanged: (set) {
+                      setState(() => _inputMode = set.first);
+                      setSheetState(() {});
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _exportCnote() async {
     try {
       await CnotePackageService.instance.exportAndShare(_notebook);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Export error: $e')),
+        SnackBar(content: Text('Export error: \')),
       );
     }
   }
@@ -256,15 +417,39 @@ class _NotebookWorkspaceScreenState extends State<NotebookWorkspaceScreen> {
         });
         _canvasKey.currentState?.refreshFromModel();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Imported "${imported.title}"')),
+          SnackBar(content: Text('Imported "\"')),
         );
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Import error: $e')),
+        SnackBar(content: Text('Import error: \')),
       );
     }
+  }
+
+  Color _colorFromHex(String hex) {
+    final clean = hex.replaceAll('#', '').trim();
+    return Color(int.parse('FF\', radix: 16));
+  }
+
+  Widget _glassPill({required Widget child, EdgeInsetsGeometry? padding}) {
+    return Container(
+      padding: padding ?? const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x140F172A),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: child,
+    );
   }
 
   @override
@@ -275,6 +460,7 @@ class _NotebookWorkspaceScreenState extends State<NotebookWorkspaceScreen> {
 
     return Scaffold(
       key: _scaffoldKey,
+      backgroundColor: const Color(0xFFF1F5F9),
       drawer: PageNavigatorDrawer(
         notebook: _notebook,
         activePageIndex: _activePageIndex,
@@ -283,213 +469,488 @@ class _NotebookWorkspaceScreenState extends State<NotebookWorkspaceScreen> {
         onDuplicatePage: _duplicatePage,
         onDeletePage: _deletePage,
       ),
-      appBar: AppBar(
-        titleSpacing: 8,
-        leading: IconButton(
-          tooltip: 'Pages (${_activePageIndex + 1}/${_notebook.pages.length})',
-          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-          icon: Badge(
-            label: Text('${_notebook.pages.length}'),
-            child: const Icon(Icons.auto_stories),
-          ),
-        ),
-        title: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              IconButton(
-                tooltip: 'Undo',
-                onPressed: canUndo ? () => _canvasKey.currentState?.undo() : null,
-                icon: const Icon(Icons.undo),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            // Full-bleed infinite vector canvas
+            Positioned.fill(
+              child: InfiniteNoteCanvas(
+                key: _canvasKey,
+                page: page,
+                toolMode: _toolMode,
+                selectedColorHex: _activeColorHex,
+                lineWidth: _activeLineWidth,
+                inputMode: _inputMode,
+                simulatedTiltDegrees: _simulatedTiltDegrees,
+                onHistoryChanged: () => setState(() {}),
+                onZoomChanged: (z) => setState(() => _currentZoom = z),
               ),
-              IconButton(
-                tooltip: 'Redo',
-                onPressed: canRedo ? () => _canvasKey.currentState?.redo() : null,
-                icon: const Icon(Icons.redo),
-              ),
-              const SizedBox(width: 6),
-              SegmentedButton<CanvasToolMode>(
-                showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(
-                    value: CanvasToolMode.pen,
-                    icon: Icon(Icons.edit, size: 18),
-                    label: Text('Pen'),
-                  ),
-                  ButtonSegment(
-                    value: CanvasToolMode.highlighter,
-                    icon: Icon(Icons.highlight, size: 18),
-                    label: Text('Highlight'),
-                  ),
-                  ButtonSegment(
-                    value: CanvasToolMode.precisionEraser,
-                    icon: Icon(Icons.auto_fix_normal, size: 18),
-                    label: Text('Split'),
-                  ),
-                  ButtonSegment(
-                    value: CanvasToolMode.strokeEraser,
-                    icon: Icon(Icons.delete_sweep, size: 18),
-                    label: Text('Erase'),
-                  ),
-                ],
-                selected: {_toolMode},
-                onSelectionChanged: (set) => setState(() => _toolMode = set.first),
-              ),
-              const SizedBox(width: 10),
-              for (final hex in ['#111827', '#2563EB', '#DC2626', '#16A34A'])
-                GestureDetector(
-                  onTap: () => setState(() {
-                    _selectedColorHex = hex;
-                    if (_toolMode == CanvasToolMode.precisionEraser ||
-                        _toolMode == CanvasToolMode.strokeEraser) {
-                      _toolMode = CanvasToolMode.pen;
-                    }
-                  }),
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: Color(
-                        int.parse('FF${hex.replaceAll('#', '')}', radix: 16),
+            ),
+
+            // 1. TOP-LEFT COLLANOTE NAVIGATION PILL (Pages + Title + Undo/Redo)
+            Positioned(
+              top: 10,
+              left: 12,
+              child: _glassPill(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Page Thumbnails',
+                      onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                      icon: const Icon(Icons.grid_view_rounded, size: 20),
+                    ),
+                    InkWell(
+                      onTap: _renameNotebookDialog,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        child: Row(
+                          children: [
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 135),
+                              child: Text(
+                                _notebook.title,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13.5,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                            ),
+                            const Icon(Icons.keyboard_arrow_down, size: 16),
+                          ],
+                        ),
                       ),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: _selectedColorHex == hex
-                            ? Colors.amber
-                            : Colors.black26,
-                        width: _selectedColorHex == hex ? 2.5 : 1,
+                    ),
+                    Container(
+                      height: 18,
+                      width: 1,
+                      color: const Color(0xFFE2E8F0),
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Undo',
+                      onPressed:
+                          canUndo ? () => _canvasKey.currentState?.undo() : null,
+                      icon: const Icon(Icons.undo_rounded, size: 20),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Redo',
+                      onPressed:
+                          canRedo ? () => _canvasKey.currentState?.redo() : null,
+                      icon: const Icon(Icons.redo_rounded, size: 20),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // 2. TOP-RIGHT UTILITY PILL (OCR, FTS5 Search, Paper Settings, .cnote Menu)
+            Positioned(
+              top: 10,
+              right: 12,
+              child: _glassPill(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Handwriting OCR Scan',
+                      onPressed: _isRunningOcr ? null : _runHandwritingOcr,
+                      icon: _isRunningOcr
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.document_scanner_outlined, size: 20),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Search Notes (FTS5)',
+                      onPressed: _openFtsSearchDialog,
+                      icon: const Icon(Icons.search_rounded, size: 20),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Paper Template & Stylus Mode',
+                      onPressed: _openPaperSettingsSheet,
+                      icon: const Icon(Icons.description_outlined, size: 20),
+                    ),
+                    PopupMenuButton<String>(
+                      tooltip: 'Notebook Options',
+                      icon: const Icon(Icons.more_horiz_rounded, size: 20),
+                      onSelected: (val) {
+                        if (val == 'export') _exportCnote();
+                        if (val == 'import') _importCnote();
+                        if (val == 'add_page') _addPage();
+                        if (val == 'clear') _canvasKey.currentState?.clearPage();
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'add_page',
+                          child: ListTile(
+                            dense: true,
+                            leading: Icon(Icons.note_add_outlined),
+                            title: Text('New Page'),
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'export',
+                          child: ListTile(
+                            dense: true,
+                            leading: Icon(Icons.ios_share),
+                            title: Text('Export .cnote Bundle'),
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'import',
+                          child: ListTile(
+                            dense: true,
+                            leading: Icon(Icons.folder_open),
+                            title: Text('Import .cnote Bundle'),
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'clear',
+                          child: ListTile(
+                            dense: true,
+                            leading: Icon(Icons.delete_outline, color: Colors.red),
+                            title: Text('Clear Current Page',
+                                style: TextStyle(color: Colors.red)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // 3. FLOATING COLLANOTE TOOL CAPSULE (Draggable + 3 Color Slots + 3 Size Dots)
+            Positioned(
+              top: 66 + _dockOffset.dy,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Transform.translate(
+                  offset: Offset(_dockOffset.dx, 0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onPanUpdate: (details) {
+                          setState(() {
+                            _dockOffset += details.delta;
+                          });
+                        },
+                        child: _glassPill(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Drag handle
+                                const Padding(
+                                  padding: EdgeInsets.only(right: 4),
+                                  child: Icon(
+                                    Icons.drag_indicator_rounded,
+                                    size: 18,
+                                    color: Color(0xFF94A3B8),
+                                  ),
+                                ),
+
+                                // Tools: Pen, Graphite Pencil, Highlighter, Split Eraser, Stroke Eraser
+                                _toolButton(
+                                  mode: CanvasToolMode.pen,
+                                  icon: Icons.edit_rounded,
+                                  tooltip: 'Fountain / Ballpoint Pen',
+                                ),
+                                _toolButton(
+                                  mode: CanvasToolMode.pencil,
+                                  icon: Icons.brush_rounded,
+                                  tooltip: 'Graphite Shading Pencil',
+                                ),
+                                _toolButton(
+                                  mode: CanvasToolMode.highlighter,
+                                  icon: Icons.border_color_rounded,
+                                  tooltip: 'Highlighter',
+                                ),
+                                _toolButton(
+                                  mode: CanvasToolMode.precisionEraser,
+                                  icon: Icons.auto_fix_normal_rounded,
+                                  tooltip: 'Precision Eraser',
+                                ),
+                                _toolButton(
+                                  mode: CanvasToolMode.strokeEraser,
+                                  icon: Icons.delete_sweep_rounded,
+                                  tooltip: 'Whole-Stroke Eraser',
+                                ),
+
+                                Container(
+                                  height: 22,
+                                  width: 1,
+                                  color: const Color(0xFFE2E8F0),
+                                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                                ),
+
+                                // 3 Quick-Tap Color Swatches (CollaNote signature slots)
+                                for (int i = 0; i < _quickColors.length; i++)
+                                  GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        if (_selectedColorSlot == i) {
+                                          _showToolInspector = !_showToolInspector;
+                                        } else {
+                                          _selectedColorSlot = i;
+                                          if (_toolMode ==
+                                                  CanvasToolMode.precisionEraser ||
+                                              _toolMode ==
+                                                  CanvasToolMode.strokeEraser) {
+                                            _toolMode = CanvasToolMode.pen;
+                                          }
+                                        }
+                                      });
+                                    },
+                                    child: AnimatedContainer(
+                                      duration: const Duration(milliseconds: 140),
+                                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                                      width: _selectedColorSlot == i ? 26 : 22,
+                                      height: _selectedColorSlot == i ? 26 : 22,
+                                      decoration: BoxDecoration(
+                                        color: _colorFromHex(_quickColors[i]),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: _selectedColorSlot == i
+                                              ? const Color(0xFF2563EB)
+                                              : Colors.white,
+                                          width: 2.5,
+                                        ),
+                                        boxShadow: const [
+                                          BoxShadow(
+                                            color: Colors.black26,
+                                            blurRadius: 3,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+
+                                Container(
+                                  height: 22,
+                                  width: 1,
+                                  color: const Color(0xFFE2E8F0),
+                                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                                ),
+
+                                // 3 Stroke Width Preset Dots
+                                for (int w = 0; w < _strokePresets.length; w++)
+                                  GestureDetector(
+                                    onTap: () =>
+                                        setState(() => _selectedWidthSlot = w),
+                                    child: Container(
+                                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                                      width: 26,
+                                      height: 26,
+                                      decoration: BoxDecoration(
+                                        color: _selectedWidthSlot == w
+                                            ? const Color(0xFFDBEAFE)
+                                            : Colors.transparent,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Center(
+                                        child: Container(
+                                          width: 5.0 + (w * 4.0),
+                                          height: 5.0 + (w * 4.0),
+                                          decoration: const BoxDecoration(
+                                            color: Color(0xFF0F172A),
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+
+                                // Expandable Palette & Tilt Popover Toggle
+                                IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  tooltip: 'Palette & Tilt Shading',
+                                  onPressed: () => setState(() =>
+                                      _showToolInspector = !_showToolInspector),
+                                  icon: Icon(
+                                    _showToolInspector
+                                        ? Icons.expand_less_rounded
+                                        : Icons.tune_rounded,
+                                    size: 19,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
+
+                      // Expandable CollaNote Tool Popover (Extra Colors + Tilt Shading Slider)
+                      if (_showToolInspector)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: _glassPill(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 10),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    for (final hex in _extraColors)
+                                      GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _quickColors[_selectedColorSlot] = hex;
+                                          });
+                                        },
+                                        child: Container(
+                                          margin: const EdgeInsets.symmetric(
+                                              horizontal: 5),
+                                          width: 24,
+                                          height: 24,
+                                          decoration: BoxDecoration(
+                                            color: _colorFromHex(hex),
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                                color: Colors.black12),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.architecture_rounded,
+                                        size: 16),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Tilt: \°',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      width: 140,
+                                      height: 28,
+                                      child: Slider(
+                                        value: _simulatedTiltDegrees,
+                                        min: 15,
+                                        max: 90,
+                                        onChanged: (v) => setState(
+                                            () => _simulatedTiltDegrees = v),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // 4. BOTTOM-LEFT PAGE PILL & QUICK NEXT-PAGE BUTTON
+            Positioned(
+              bottom: 14,
+              left: 14,
+              child: _glassPill(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Page \ / \',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12.5,
+                        color: Color(0xFF334155),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    InkWell(
+                      onTap: _addPage,
+                      borderRadius: BorderRadius.circular(12),
+                      child: const Padding(
+                        padding: EdgeInsets.all(2),
+                        child: Icon(Icons.add_circle_outline_rounded,
+                            size: 18, color: Color(0xFF2563EB)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // 5. BOTTOM-RIGHT ZOOM PILL (Tap to reset 100%)
+            Positioned(
+              bottom: 14,
+              right: 14,
+              child: GestureDetector(
+                onTap: () => _canvasKey.currentState?.resetZoom(),
+                child: _glassPill(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Text(
+                    '\%',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12.5,
+                      color: Color(0xFF334155),
                     ),
                   ),
                 ),
-              const SizedBox(width: 10),
-              DropdownButton<PaperStyle>(
-                value: page.paperConfig.style,
-                underline: const SizedBox.shrink(),
-                items: PaperStyle.values
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s.label)))
-                    .toList(),
-                onChanged: (style) {
-                  if (style != null) {
-                    setState(() {
-                      page.paperConfig = page.paperConfig.copyWith(style: style);
-                    });
-                  }
-                },
               ),
-              const SizedBox(width: 8),
-              SegmentedButton<DrawingInputMode>(
-                showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(
-                    value: DrawingInputMode.activeStylusOnly,
-                    label: Text('Stylus'),
-                  ),
-                  ButtonSegment(
-                    value: DrawingInputMode.universalStylus,
-                    label: Text('Touch'),
-                  ),
-                ],
-                selected: {_inputMode},
-                onSelectionChanged: (set) =>
-                    setState(() => _inputMode = set.first),
-              ),
-              const SizedBox(width: 6),
-              IconButton(
-                tooltip: 'Scan Handwriting (ML Kit OCR)',
-                onPressed: _isRunningOcr ? null : _runHandwritingOcr,
-                icon: _isRunningOcr
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.document_scanner_outlined),
-              ),
-              IconButton(
-                tooltip: 'Search Notes (SQLite FTS5)',
-                onPressed: _openFtsSearchDialog,
-                icon: const Icon(Icons.search),
-              ),
-              IconButton(
-                tooltip: 'Export .cnote Archive',
-                onPressed: _exportCnote,
-                icon: const Icon(Icons.ios_share),
-              ),
-              IconButton(
-                tooltip: 'Import .cnote Archive',
-                onPressed: _importCnote,
-                icon: const Icon(Icons.folder_open),
-              ),
-              IconButton(
-                tooltip: 'Clear Page',
-                onPressed: () => _canvasKey.currentState?.clearPage(),
-                icon: const Icon(Icons.layers_clear),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
-      body: Stack(
-        alignment: Alignment.bottomCenter,
-        children: [
-          InfiniteNoteCanvas(
-            key: _canvasKey,
-            page: page,
-            toolMode: _toolMode,
-            selectedColorHex: _selectedColorHex,
-            lineWidth: _lineWidth,
-            inputMode: _inputMode,
-            simulatedTiltDegrees: _simulatedTiltDegrees,
-            onHistoryChanged: () => setState(() {}),
+    );
+  }
+
+  Widget _toolButton({
+    required CanvasToolMode mode,
+    required IconData icon,
+    required String tooltip,
+  }) {
+    final isSelected = _toolMode == mode;
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => setState(() => _toolMode = mode),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: const EdgeInsets.all(7),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF2563EB) : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
           ),
-          Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            decoration: BoxDecoration(
-              color: Theme.of(context)
-                  .colorScheme
-                  .surfaceContainerHighest
-                  .withValues(alpha: 0.92),
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: const [
-                BoxShadow(blurRadius: 8, color: Colors.black12),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.architecture, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  'Tilt: ${_simulatedTiltDegrees.round()}°',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w600, fontSize: 13),
-                ),
-                SizedBox(
-                  width: 160,
-                  child: Slider(
-                    value: _simulatedTiltDegrees,
-                    min: 15,
-                    max: 90,
-                    divisions: 75,
-                    onChanged: (v) => setState(() => _simulatedTiltDegrees = v),
-                  ),
-                ),
-                Text(
-                  _simulatedTiltDegrees < 70 ? 'Graphite Grain' : 'Crisp Ink',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: _simulatedTiltDegrees < 70
-                        ? Colors.orange.shade800
-                        : Colors.black54,
-                  ),
-                ),
-              ],
-            ),
+          child: Icon(
+            icon,
+            size: 19,
+            color: isSelected ? Colors.white : const Color(0xFF334155),
           ),
-        ],
+        ),
       ),
     );
   }

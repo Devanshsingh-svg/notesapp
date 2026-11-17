@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +9,7 @@ import '../models/notebook_models.dart';
 
 enum CanvasToolMode {
   pen,
+  pencil,
   highlighter,
   precisionEraser,
   strokeEraser,
@@ -22,6 +23,7 @@ class InfiniteNoteCanvas extends StatefulWidget {
   final DrawingInputMode inputMode;
   final double simulatedTiltDegrees;
   final VoidCallback onHistoryChanged;
+  final ValueChanged<double>? onZoomChanged;
 
   const InfiniteNoteCanvas({
     super.key,
@@ -32,6 +34,7 @@ class InfiniteNoteCanvas extends StatefulWidget {
     required this.inputMode,
     required this.simulatedTiltDegrees,
     required this.onHistoryChanged,
+    this.onZoomChanged,
   });
 
   @override
@@ -63,6 +66,7 @@ class InfiniteNoteCanvasState extends State<InfiniteNoteCanvas> {
 
   bool get canUndo => _undoStack.isNotEmpty;
   bool get canRedo => _redoStack.isNotEmpty;
+  double get zoom => _zoom;
 
   @override
   void initState() {
@@ -94,11 +98,19 @@ class InfiniteNoteCanvasState extends State<InfiniteNoteCanvas> {
         });
       }
     } catch (e) {
-      debugPrint('Paper grain shader fallback active: $e');
+      debugPrint('Paper grain shader fallback active: \');
     }
   }
 
   Offset _screenToWorld(Offset screenPos) => (screenPos - _cameraOffset) / _zoom;
+
+  void resetZoom() {
+    setState(() {
+      _cameraOffset = Offset.zero;
+      _zoom = 1.0;
+    });
+    widget.onZoomChanged?.call(1.0);
+  }
 
   void refreshFromModel() {
     _rebuildCommittedMeshes();
@@ -165,7 +177,11 @@ class InfiniteNoteCanvasState extends State<InfiniteNoteCanvas> {
 
     _pressureEstimator.reset();
     final isHighlighter = widget.toolMode == CanvasToolMode.highlighter;
-    final simTiltRad = widget.simulatedTiltDegrees * math.pi / 180.0;
+    final isPencil = widget.toolMode == CanvasToolMode.pencil;
+    final effectiveTilt = isPencil
+        ? math.min(widget.simulatedTiltDegrees, 42.0)
+        : widget.simulatedTiltDegrees;
+    final simTiltRad = effectiveTilt * math.pi / 180.0;
 
     final firstPoint = UnifiedStylusAdapter.toStrokePoint(
       event: event,
@@ -177,8 +193,8 @@ class InfiniteNoteCanvasState extends State<InfiniteNoteCanvas> {
     _currentStroke = Stroke(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       points: [firstPoint],
-      colorHex: isHighlighter ? '#FACC15' : widget.selectedColorHex,
-      lineWidth: isHighlighter ? 18.0 : widget.lineWidth,
+      colorHex: widget.selectedColorHex,
+      lineWidth: isHighlighter ? math.max(widget.lineWidth * 3.2, 16.0) : widget.lineWidth,
       toolType: isHighlighter ? 'highlighter' : 'pen',
       timestamp: firstPoint.timestamp,
     );
@@ -199,7 +215,11 @@ class InfiniteNoteCanvasState extends State<InfiniteNoteCanvas> {
     }
 
     if (_currentStroke == null) return;
-    final simTiltRad = widget.simulatedTiltDegrees * math.pi / 180.0;
+    final isPencil = widget.toolMode == CanvasToolMode.pencil;
+    final effectiveTilt = isPencil
+        ? math.min(widget.simulatedTiltDegrees, 42.0)
+        : widget.simulatedTiltDegrees;
+    final simTiltRad = effectiveTilt * math.pi / 180.0;
 
     final pt = UnifiedStylusAdapter.toStrokePoint(
       event: event,
@@ -283,7 +303,7 @@ class InfiniteNoteCanvasState extends State<InfiniteNoteCanvas> {
             updated.add(Stroke(
               id: (i == 0 && segments.length == 1)
                   ? stroke.id
-                  : '${stroke.id}_$i',
+                  : '\_\',
               points: segments[i],
               colorHex: stroke.colorHex,
               lineWidth: stroke.lineWidth,
@@ -335,6 +355,7 @@ class InfiniteNoteCanvasState extends State<InfiniteNoteCanvas> {
             _cameraOffset = focal - ((focal - _cameraOffset) / _zoom) * newZoom;
             _zoom = newZoom;
           });
+          widget.onZoomChanged?.call(newZoom);
         }
       },
       child: GestureDetector(
@@ -358,6 +379,7 @@ class InfiniteNoteCanvasState extends State<InfiniteNoteCanvas> {
             _zoom = newZoom;
             _cameraOffset = _offsetStart + focalDelta;
           });
+          widget.onZoomChanged?.call(newZoom);
         },
         child: CustomPaint(
           painter: _VectorNotePainter(
@@ -407,9 +429,15 @@ class _VectorNotePainter extends CustomPainter {
     required this.eraserRadius,
   });
 
+  Color _parseBg(String hex) {
+    final clean = hex.replaceAll('#', '').trim();
+    final rgb = int.tryParse(clean, radix: 16) ?? 0xFFFDFB;
+    return Color(0xFF000000 | rgb);
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
-    final bgPaint = Paint()..color = const Color(0xFFFFFFFF);
+    final bgPaint = Paint()..color = _parseBg(paperConfig.backgroundColorHex);
     canvas.drawRect(Offset.zero & size, bgPaint);
 
     canvas.save();
@@ -460,9 +488,9 @@ class _VectorNotePainter extends CustomPainter {
     }
 
     if (eraserCursorWorld != null) {
-      final fill = Paint()..color = Colors.grey.withValues(alpha: 0.25);
+      final fill = Paint()..color = Colors.grey.withValues(alpha: 0.22);
       final ring = Paint()
-        ..color = Colors.grey.shade600
+        ..color = const Color(0xFF3B82F6)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.5 / zoom;
       canvas.drawCircle(eraserCursorWorld!, eraserRadius, fill);
@@ -476,8 +504,8 @@ class _VectorNotePainter extends CustomPainter {
     if (paperConfig.style == PaperStyle.blank) return;
 
     final linePaint = Paint()
-      ..color = const Color(0xFFE5E7EB)
-      ..strokeWidth = 0.8 / zoom;
+      ..color = const Color(0xFFE2E8F0)
+      ..strokeWidth = 0.85 / zoom;
 
     final spacing = paperConfig.spacing;
     final startX = (visibleWorld.left / spacing).floor() * spacing;
@@ -485,7 +513,7 @@ class _VectorNotePainter extends CustomPainter {
 
     if (paperConfig.style == PaperStyle.dotted) {
       final dotPaint = Paint()..color = const Color(0xFFCBD5E1);
-      final r = 1.2 / zoom;
+      final r = 1.25 / zoom;
       for (double x = startX; x <= visibleWorld.right; x += spacing) {
         for (double y = startY; y <= visibleWorld.bottom; y += spacing) {
           canvas.drawCircle(Offset(x, y), r, dotPaint);
