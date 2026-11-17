@@ -254,7 +254,7 @@ class StrokeTessellator {
   }
 
   static Offset _safeNormalize(double dx, double dy, double fbX, double fbY) {
-    final len = math.hypot(dx, dy);
+    final len = math.sqrt((dx) * (dx) + (dy) * (dy));
     return len > 0.0001 ? Offset(dx / len, dy / len) : Offset(fbX, fbY);
   }
 

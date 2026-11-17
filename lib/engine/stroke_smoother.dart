@@ -12,7 +12,7 @@ class StrokeSmoother {
     for (int i = 1; i < points.length; i++) {
       final prev = cleaned.last;
       final curr = points[i];
-      if (math.hypot(curr.x - prev.x, curr.y - prev.y) > 0.25) {
+      if (math.sqrt((curr.x - prev.x) * (curr.x - prev.x) + (curr.y - prev.y) * (curr.y - prev.y)) > 0.25) {
         cleaned.add(curr);
       }
     }
@@ -33,9 +33,9 @@ class StrokeSmoother {
       final p2 = control[i + 2];
       final p3 = control[i + 3];
 
-      final d01 = math.hypot(p1.x - p0.x, p1.y - p0.y);
-      final d12 = math.hypot(p2.x - p1.x, p2.y - p1.y);
-      final d23 = math.hypot(p3.x - p2.x, p3.y - p2.y);
+      final d01 = math.sqrt((p1.x - p0.x) * (p1.x - p0.x) + (p1.y - p0.y) * (p1.y - p0.y));
+      final d12 = math.sqrt((p2.x - p1.x) * (p2.x - p1.x) + (p2.y - p1.y) * (p2.y - p1.y));
+      final d23 = math.sqrt((p3.x - p2.x) * (p3.x - p2.x) + (p3.y - p2.y) * (p3.y - p2.y));
 
       final steps = (d12 / targetSegmentLength).ceil().clamp(1, 16);
       if (steps == 1) {
